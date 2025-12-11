@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professor Portal - Ethereal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    
+    <script src="https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        /* --- ETHEREAL DESIGN SYSTEM (MATCHING ADMIN PANEL) --- */
+        :root {
+            --primary: #6366f1; /* Indigo */
+            --glass-border: rgba(255, 255, 255, 0.4);
+            --glass-bg: rgba(255, 255, 255, 0.65);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            color: #1e293b;
+            overflow: hidden;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        .glass-sidebar {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.6);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .input-pill {
+            background: rgba(255,255,255,0.5);
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .input-pill:focus {
+            background: white;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+            outline: none;
+        }
+        
+        select.input-pill {
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+
+        /* Student Row Styling */
+        .floating-row {
+            transition: all 0.2s ease;
+            background: rgba(255,255,255,0.6);
+            margin-bottom: 8px;
+            border-radius: 16px;
+        }
+        .floating-row:hover {
+            background: white;
+            transform: scale(1.005);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        /* Status Buttons */
+        .btn-status {
+            transition: all 0.2s;
+        }
+        .btn-status.active-present {
+            background-color: #10b981; /* Emerald 500 */
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
+        }
+        .btn-status.active-absent {
+            background-color: #ef4444; /* Red 500 */
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3);
+        }
+        
+        .fade-enter { animation: fadeEnter 0.6s ease forwards; opacity: 0; transform: translateY(10px); }
+        @keyframes fadeEnter { to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+    <div id="loginScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-white/30 backdrop-blur-xl">
+        <div class="glass-panel p-10 rounded-[40px] w-full max-w-sm text-center shadow-2xl border-white/60">
+            <div class="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-500/30">
+                <i class="fas fa-chalkboard-teacher text-3xl text-white"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-gray-800 mb-2">Professor Portal</h2>
+            <p class="text-gray-500 mb-8">Secure Academic Access</p>
+            
+            <div class="space-y-4">
+                <input id="loginEmail" type="email" class="input-pill w-full p-4 rounded-xl font-medium" placeholder="Email Address">
+                <input id="loginPass" type="password" class="input-pill w-full p-4 rounded-xl font-medium" placeholder="Password">
+            </div>
+
+            <p id="loginError" class="text-red-500 text-sm mt-4 hidden"><i class="fas fa-exclamation-circle mr-1"></i> Invalid Credentials</p>
+
+            <button onclick="login()" class="mt-8 w-full py-4 rounded-xl bg-indigo-600 text-white font-bold shadow-lg hover:shadow-indigo-500/40 transition hover:-translate-y-1">
+                Enter Dashboard
+            </button>
+        </div>
+    </div>
+
+    <aside id="dashboardSidebar" class="w-80 glass-sidebar flex flex-col h-full z-20 shadow-2xl hidden fade-enter">
+        <div class="p-8 flex flex-col items-center border-b border-gray-200/50">
+            <div class="w-16 h-16 bg-white/50 rounded-2xl flex items-center justify-center mb-3 shadow-sm">
+                <i class="fas fa-user-graduate text-2xl text-indigo-600"></i>
+            </div>
+            <h1 class="text-xl font-bold text-gray-800">Session Config</h1>
+            <p id="profNameDisplay" class="text-indigo-600 text-sm font-medium">Loading...</p>
+        </div>
+
+        <div class="flex-1 px-6 py-6 space-y-5 overflow-y-auto">
+            
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">1. Department (Filiere)</label>
+                <select id="selFiliere" onchange="loadSpecialities()" class="input-pill w-full p-3 rounded-xl text-sm font-medium text-gray-700 cursor-pointer">
+                    <option value="">Select Filiere...</option>
+                </select>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">2. Speciality</label>
+                <select id="selSpec" onchange="loadGroupsAndModules()" class="input-pill w-full p-3 rounded-xl text-sm font-medium text-gray-700 cursor-pointer" disabled>
+                    <option value="">Select Speciality...</option>
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">3. Group</label>
+                    <select id="selGroup" class="input-pill w-full p-3 rounded-xl text-sm font-medium text-gray-700 cursor-pointer" disabled>
+                        <option value="">Group...</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">4. Module</label>
+                    <select id="selModule" class="input-pill w-full p-3 rounded-xl text-sm font-medium text-gray-700 cursor-pointer" disabled>
+                        <option value="">Module...</option>
+                    </select>
+                </div>
+            </div>
+
+            <button onclick="loadStudents()" class="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold shadow-lg hover:shadow-indigo-500/40 hover:-translate-y-1 transition flex items-center justify-center mt-4">
+                <i class="fas fa-users mr-2"></i> Load Students
+            </button>
+        </div>
+
+        <div class="p-6 border-t border-gray-200/50">
+            <button onclick="logout()" class="w-full py-3 rounded-2xl bg-red-50 text-red-500 font-bold hover:bg-red-500 hover:text-white transition shadow-sm">
+                <i class="fas fa-sign-out-alt mr-2"></i> Sign Out
+            </button>
+        </div>
+    </aside>
+
+    <main id="dashboardMain" class="flex-1 flex flex-col h-full relative z-10 hidden fade-enter">
+        
+        <header class="h-24 px-10 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-white drop-shadow-sm">Attendance Sheet</h1>
+                <p id="currentDate" class="text-white/80 text-sm"></p>
+            </div>
+            <div class="glass-panel px-6 py-2 rounded-full flex items-center space-x-3">
+                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                <span class="text-sm font-bold text-indigo-900">Live Session</span>
+            </div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto px-10 pb-10">
+            
+            <div id="welcomeState" class="flex flex-col items-center justify-center h-full text-white/60">
+                <i class="fas fa-clipboard-list text-7xl mb-4 opacity-50"></i>
+                <p class="text-xl font-medium">Configure session in the sidebar to begin</p>
+            </div>
+
+            <div id="studentsListState" class="hidden animate-fade-in">
+                
+                <div class="flex justify-between items-end mb-6">
+                    <div class="glass-panel px-6 py-3 rounded-2xl">
+                        <span class="text-xs font-bold text-gray-500 uppercase">Class Context</span>
+                        <div class="flex items-center space-x-4 mt-1">
+                            <span id="displayGroup" class="font-bold text-indigo-600 text-lg"><i class="fas fa-users mr-2"></i>--</span>
+                            <span class="text-gray-300">|</span>
+                            <span id="displayModule" class="font-bold text-pink-600 text-lg"><i class="fas fa-book mr-2"></i>--</span>
+                        </div>
+                    </div>
+
+                    <div class="flex space-x-4">
+                         <button onclick="exportAndSave()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:shadow-emerald-500/40 transition flex items-center transform hover:-translate-y-1">
+                            <i class="fas fa-file-excel mr-2"></i> Save & Download Excel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-1 rounded-3xl overflow-hidden min-h-[400px]">
+                    <div class="w-full">
+                        <div class="flex px-6 py-4 border-b border-gray-200/50 bg-white/30">
+                            <div class="w-1/4 text-xs font-bold text-gray-600 uppercase tracking-wider">Student ID</div>
+                            <div class="w-1/4 text-xs font-bold text-gray-600 uppercase tracking-wider">Full Name</div>
+                            <div class="w-1/2 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Attendance Status</div>
+                        </div>
+                        
+                        <div id="studentsContainer" class="p-3 space-y-2">
+                            </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- FIREBASE CONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCcnFWLmLlCiW0aJ57HsrYW9iFyA8NuibQ",
+            authDomain: "his-bank.firebaseapp.com",
+            projectId: "his-bank",
+            storageBucket: "his-bank.firebasestorage.app",
+            messagingSenderId: "58642918698",
+            appId: "1:58642918698:web:1d1de10fa827b8f3fbc253"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // --- STATE VARIABLES ---
+        let currentProf = null;
+        let studentsData = []; // Stores { id, name, matricule, ... , tempStatus }
+
+        // --- INIT ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('currentDate').innerText = new Date().toLocaleDateString('en-US', dateOptions);
+        });
+
+        // --- AUTH LOGIC ---
+        function login() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const pass = document.getElementById('loginPass').value.trim();
+            if(!email || !pass) return;
+
+            auth.signInWithEmailAndPassword(email, pass)
+                .then((userCredential) => {
+                    const uid = userCredential.user.uid;
+                    db.collection('professors').doc(uid).get().then(doc => {
+                        if (doc.exists) {
+                            currentProf = { id: doc.id, ...doc.data() };
+                            setupDashboard();
+                        } else {
+                            alert("Professor profile not found.");
+                            auth.signOut();
+                        }
+                    });
+                })
+                .catch((error) => {
+                    console.error(error);
+                    document.getElementById('loginError').classList.remove('hidden');
+                });
+        }
+
+        function setupDashboard() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardSidebar').classList.remove('hidden');
+            document.getElementById('dashboardMain').classList.remove('hidden');
+            document.getElementById('profNameDisplay').innerText = "Prof. " + currentProf.name;
+            loadFilieres();
+        }
+
+        function logout() {
+            auth.signOut().then(() => window.location.reload());
+        }
+
+        // --- DATA LOADING LOGIC ---
+        async function loadFilieres() {
+            const snap = await db.collection('filieres').get();
+            const sel = document.getElementById('selFiliere');
+            sel.innerHTML = '<option value="">Select Filiere...</option>';
+            snap.forEach(doc => {
+                sel.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
+            });
+        }
+
+        async function loadSpecialities() {
+            const filiereId = document.getElementById('selFiliere').value;
+            const sel = document.getElementById('selSpec');
+            sel.innerHTML = '<option value="">Select Speciality...</option>';
+            sel.disabled = true;
+            resetLowerFilters();
+
+            if(!filiereId) return;
+
+            const snap = await db.collection('specialities').where('filiereId','==',filiereId).get();
+            snap.forEach(doc => {
+                sel.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
+            });
+            sel.disabled = false;
+        }
+
+        async function loadGroupsAndModules() {
+            const specId = document.getElementById('selSpec').value;
+            const selGrp = document.getElementById('selGroup');
+            const selMod = document.getElementById('selModule');
+            
+            selGrp.innerHTML = '<option value="">Group...</option>';
+            selMod.innerHTML = '<option value="">Module...</option>';
+            selGrp.disabled = true;
+            selMod.disabled = true;
+
+            if(!specId) return;
+
+            const [groupsSnap, modulesSnap] = await Promise.all([
+                db.collection('groups').where('specId','==',specId).get(),
+                db.collection('modules').where('specId','==',specId).get()
+            ]);
+
+            groupsSnap.forEach(doc => {
+                selGrp.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
+            });
+
+            modulesSnap.forEach(doc => {
+                selMod.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
+            });
+
+            selGrp.disabled = false;
+            selMod.disabled = false;
+        }
+
+        function resetLowerFilters() {
+            document.getElementById('selGroup').disabled = true;
+            document.getElementById('selGroup').innerHTML = '<option value="">Group...</option>';
+            document.getElementById('selModule').disabled = true;
+            document.getElementById('selModule').innerHTML = '<option value="">Module...</option>';
+        }
+
+        // --- STUDENT LIST LOGIC ---
+        async function loadStudents() {
+            const groupId = document.getElementById('selGroup').value;
+            const moduleId = document.getElementById('selModule').value;
+            
+            // Get text for display
+            const groupSelect = document.getElementById('selGroup');
+            const moduleSelect = document.getElementById('selModule');
+            const groupName = groupSelect.options[groupSelect.selectedIndex].text;
+            const moduleName = moduleSelect.options[moduleSelect.selectedIndex].text;
+
+            if(!groupId || !moduleId) {
+                alert("Please select both Group and Module.");
+                return;
+            }
+
+            document.getElementById('displayGroup').innerHTML = `<i class="fas fa-users mr-2"></i> ${groupName}`;
+            document.getElementById('displayModule').innerHTML = `<i class="fas fa-book mr-2"></i> ${moduleName}`;
+
+            const snap = await db.collection('students').where('groupId','==',groupId).get();
+            const container = document.getElementById('studentsContainer');
+            container.innerHTML = '';
+            studentsData = [];
+
+            if(snap.empty) {
+                container.innerHTML = '<div class="p-8 text-center text-gray-500 font-medium">No students found in this group.</div>';
+                toggleViews(true);
+                return;
+            }
+
+            snap.forEach(doc => {
+                const student = doc.data();
+                const studentObj = { id: doc.id, ...student, tempStatus: null }; // Default null (neither)
+                studentsData.push(studentObj);
+
+                const row = document.createElement('div');
+                row.className = "floating-row flex items-center px-6 py-4";
+                row.innerHTML = `
+                    <div class="w-1/4 font-mono text-sm text-indigo-600 font-bold">${student.id || doc.id}</div>
+                    <div class="w-1/4 font-medium text-gray-700">${student.name}</div>
+                    <div class="w-1/2 flex justify-center space-x-3" id="actions-${doc.id}">
+                        <button onclick="setStatus('${doc.id}', 'present')" class="btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-emerald-100 hover:text-emerald-600" data-type="present">
+                            <i class="fas fa-check mr-2"></i> Present
+                        </button>
+                        <button onclick="setStatus('${doc.id}', 'absent')" class="btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600" data-type="absent">
+                            <i class="fas fa-times mr-2"></i> Absent
+                        </button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            toggleViews(true);
+        }
+
+        function toggleViews(showList) {
+            if(showList) {
+                document.getElementById('welcomeState').classList.add('hidden');
+                document.getElementById('studentsListState').classList.remove('hidden');
+            } else {
+                document.getElementById('welcomeState').classList.remove('hidden');
+                document.getElementById('studentsListState').classList.add('hidden');
+            }
+        }
+
+        function setStatus(studentDocId, status) {
+            const container = document.getElementById(`actions-${studentDocId}`);
+            const btnPresent = container.querySelector('[data-type="present"]');
+            const btnAbsent = container.querySelector('[data-type="absent"]');
+
+            // Reset classes
+            btnPresent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-emerald-100 hover:text-emerald-600";
+            btnAbsent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600";
+
+            // Apply Active State
+            if(status === 'present') {
+                btnPresent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold active-present";
+            } else {
+                btnAbsent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold active-absent";
+            }
+
+            // Update local data
+            const idx = studentsData.findIndex(s => s.id === studentDocId);
+            if(idx > -1) studentsData[idx].tempStatus = status;
+        }
+
+        // --- EXPORT & SAVE LOGIC ---
+        async function exportAndSave() {
+            if(studentsData.length === 0) return;
+
+            // 1. Gather Context Info
+            const groupName = document.getElementById('selGroup').options[document.getElementById('selGroup').selectedIndex].text;
+            const moduleName = document.getElementById('selModule').options[document.getElementById('selModule').selectedIndex].text;
+            const dateStr = new Date().toLocaleString();
+            
+            // 2. Prepare Data for Excel
+            // We create a Header Section and then the Data Table
+            const excelData = [
+                ["UNIVERSITY ATTENDANCE SHEET"],
+                ["Professor:", currentProf.name],
+                ["Module:", moduleName],
+                ["Group:", groupName],
+                ["Date:", dateStr],
+                [""], // Empty row for spacing
+                ["Matricule (ID)", "Student Name", "Status", "Remarks"] // Table Headers
+            ];
+
+            let presentCount = 0;
+            let absentCount = 0;
+
+            studentsData.forEach(s => {
+                const status = s.tempStatus ? s.tempStatus.toUpperCase() : "NOT MARKED";
+                if(s.tempStatus === 'present') presentCount++;
+                if(s.tempStatus === 'absent') absentCount++;
+                
+                excelData.push([
+                    s.id, // Student ID
+                    s.name, // Name
+                    status, // Status
+                    "" // Empty remarks column
+                ]);
+            });
+
+            // Add Summary at bottom
+            excelData.push([""]);
+            excelData.push(["SUMMARY"]);
+            excelData.push(["Total Present:", presentCount]);
+            excelData.push(["Total Absent:", absentCount]);
+
+            // 3. Generate Excel File (Using SheetJS)
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            // Styling column widths (optional but nice)
+            ws['!cols'] = [
+                {wch: 20}, // ID width
+                {wch: 30}, // Name width
+                {wch: 15}, // Status width
+                {wch: 20}  // Remarks
+            ];
+
+            XLSX.utils.book_append_sheet(wb, ws, "Attendance");
+            
+            // Generate filename: Module_Group_Date.xlsx
+            const filename = `Attendance_${moduleName}_${groupName}_${new Date().toISOString().slice(0,10)}.xlsx`;
+            
+            // Trigger Download
+            XLSX.writeFile(wb, filename);
+
+            // 4. (Optional) Save to Firestore as well for backup
+            saveToFirestore(moduleName, groupName, presentCount, absentCount);
+        }
+
+        async function saveToFirestore(modName, grpName, pCount, aCount) {
+            const batch = db.batch();
+            const moduleId = document.getElementById('selModule').value;
+            const groupId = document.getElementById('selGroup').value;
+            const timestamp = firebase.firestore.Timestamp.now();
+
+            let hasUpdates = false;
+
+            studentsData.forEach(student => {
+                if(student.tempStatus) {
+                    const ref = db.collection('attendance').doc();
+                    batch.set(ref, {
+                        studentId: student.id,
+                        studentName: student.name,
+                        moduleId: moduleId,
+                        moduleName: modName,
+                        groupId: groupId,
+                        profId: currentProf.id,
+                        status: student.tempStatus,
+                        date: timestamp
+                    });
+                    hasUpdates = true;
+                }
+            });
+
+            if(hasUpdates) {
+                try {
+                    await batch.commit();
+                    // Alert is handled by the download mostly, but we can notify success
+                    console.log("Data synced to cloud.");
+                } catch(e) {
+                    console.error("Cloud sync failed", e);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
