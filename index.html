@@ -218,12 +218,13 @@
                             <span id="displayModule" class="font-bold text-pink-600 text-lg"><i class="fas fa-book mr-2"></i>--</span>
                         </div>
                     </div>
-
+                    
                     <div class="flex space-x-4">
-                         <button onclick="exportAndSave()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:shadow-emerald-500/40 transition flex items-center transform hover:-translate-y-1">
+                        <button onclick="exportAndSave()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:shadow-emerald-500/40 transition flex items-center transform hover:-translate-y-1">
                             <i class="fas fa-file-excel mr-2"></i> Save & Download Excel
                         </button>
                     </div>
+
                 </div>
 
                 <div class="glass-panel p-1 rounded-3xl overflow-hidden min-h-[400px]">
@@ -233,16 +234,14 @@
                             <div class="w-1/4 text-xs font-bold text-gray-600 uppercase tracking-wider">Full Name</div>
                             <div class="w-1/2 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Attendance Status</div>
                         </div>
-                        
                         <div id="studentsContainer" class="p-3 space-y-2">
-                            </div>
+                        </div>
                     </div>
                 </div>
-
             </div>
         </div>
-    </main>
 
+    </main>
     <script>
         // --- FIREBASE CONFIGURATION ---
         const firebaseConfig = {
@@ -267,51 +266,62 @@
             document.getElementById('currentDate').innerText = new Date().toLocaleDateString('en-US', dateOptions);
         });
 
-        // --- AUTH LOGIC ---
-        function login() {
-            const email = document.getElementById('loginEmail').value.trim();
-            const pass = document.getElementById('loginPass').value.trim();
-            if(!email || !pass) return;
-
-            auth.signInWithEmailAndPassword(email, pass)
-                .then((userCredential) => {
-                    const uid = userCredential.user.uid;
-                    db.collection('professors').doc(uid).get().then(doc => {
-                        if (doc.exists) {
-                            currentProf = { id: doc.id, ...doc.data() };
-                            setupDashboard();
-                        } else {
-                            alert("Professor profile not found.");
-                            auth.signOut();
-                        }
-                    });
-                })
-                .catch((error) => {
-                    console.error(error);
-                    document.getElementById('loginError').classList.remove('hidden');
-                });
+        // --- UTILS ---
+        function toggleViews(showList) {
+            document.getElementById('welcomeState').classList.toggle('hidden', showList);
+            document.getElementById('studentsListState').classList.toggle('hidden', !showList);
         }
 
-        function setupDashboard() {
-            document.getElementById('loginScreen').classList.add('hidden');
-            document.getElementById('dashboardSidebar').classList.remove('hidden');
-            document.getElementById('dashboardMain').classList.remove('hidden');
-            document.getElementById('profNameDisplay').innerText = "Prof. " + currentProf.name;
-            loadFilieres();
+        // --- AUTH LOGIC ---
+        function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPass').value;
+            const errorEl = document.getElementById('loginError');
+            errorEl.classList.add('hidden');
+
+            auth.signInWithEmailAndPassword(email, password)
+            .then(async (userCredential) => {
+                const profDoc = await db.collection('professors').doc(userCredential.user.uid).get();
+                if(profDoc.exists) {
+                    currentProf = { id: profDoc.id, ...profDoc.data() };
+                    document.getElementById('profNameDisplay').innerText = `Prof. ${currentProf.name}`;
+                    loadFilieres();
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('dashboardSidebar').classList.remove('hidden');
+                    document.getElementById('dashboardMain').classList.remove('hidden');
+                } else {
+                    // Not a professor account
+                    auth.signOut();
+                    errorEl.innerText = "Error: Account not registered as a Professor.";
+                    errorEl.classList.remove('hidden');
+                }
+            })
+            .catch(error => {
+                console.error("Login failed:", error);
+                errorEl.innerText = error.message.includes('password') ? "Invalid email or password." : error.message;
+                errorEl.classList.remove('hidden');
+            });
         }
 
         function logout() {
-            auth.signOut().then(() => window.location.reload());
+            auth.signOut().then(() => {
+                currentProf = null;
+                studentsData = [];
+                window.location.reload(); // Simple reload to show login screen
+            });
         }
 
-        // --- DATA LOADING LOGIC ---
+        // --- DROPDOWN LOGIC ---
         async function loadFilieres() {
-            const snap = await db.collection('filieres').get();
             const sel = document.getElementById('selFiliere');
             sel.innerHTML = '<option value="">Select Filiere...</option>';
+            const snap = await db.collection('filieres').get();
             snap.forEach(doc => {
                 sel.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
+            // Reset other filters
+            document.getElementById('selSpec').disabled = true;
+            resetLowerFilters();
         }
 
         async function loadSpecialities() {
@@ -321,9 +331,9 @@
             sel.disabled = true;
             resetLowerFilters();
 
-            if(!filiereId) return;
+            if (!filiereId) return;
 
-            const snap = await db.collection('specialities').where('filiereId','==',filiereId).get();
+            const snap = await db.collection('specialities').where('filiereId', '==', filiereId).get();
             snap.forEach(doc => {
                 sel.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
@@ -334,7 +344,6 @@
             const specId = document.getElementById('selSpec').value;
             const selGrp = document.getElementById('selGroup');
             const selMod = document.getElementById('selModule');
-            
             selGrp.innerHTML = '<option value="">Group...</option>';
             selMod.innerHTML = '<option value="">Module...</option>';
             selGrp.disabled = true;
@@ -342,6 +351,7 @@
 
             if(!specId) return;
 
+            // Assuming groups and modules have a 'specId' field
             const [groupsSnap, modulesSnap] = await Promise.all([
                 db.collection('groups').where('specId','==',specId).get(),
                 db.collection('modules').where('specId','==',specId).get()
@@ -350,7 +360,6 @@
             groupsSnap.forEach(doc => {
                 selGrp.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
-
             modulesSnap.forEach(doc => {
                 selMod.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
@@ -385,6 +394,7 @@
             document.getElementById('displayGroup').innerHTML = `<i class="fas fa-users mr-2"></i> ${groupName}`;
             document.getElementById('displayModule').innerHTML = `<i class="fas fa-book mr-2"></i> ${moduleName}`;
 
+            // Fetch students in the selected group
             const snap = await db.collection('students').where('groupId','==',groupId).get();
             const container = document.getElementById('studentsContainer');
             container.innerHTML = '';
@@ -398,21 +408,21 @@
 
             snap.forEach(doc => {
                 const student = doc.data();
-                const studentObj = { id: doc.id, ...student, tempStatus: null }; // Default null (neither)
+                const studentObj = { 
+                    id: doc.id, // The matricule is the document ID in 'students'
+                    ...student, 
+                    tempStatus: null 
+                }; 
                 studentsData.push(studentObj);
 
                 const row = document.createElement('div');
                 row.className = "floating-row flex items-center px-6 py-4";
                 row.innerHTML = `
-                    <div class="w-1/4 font-mono text-sm text-indigo-600 font-bold">${student.id || doc.id}</div>
-                    <div class="w-1/4 font-medium text-gray-700">${student.name}</div>
-                    <div class="w-1/2 flex justify-center space-x-3" id="actions-${doc.id}">
-                        <button onclick="setStatus('${doc.id}', 'present')" class="btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-emerald-100 hover:text-emerald-600" data-type="present">
-                            <i class="fas fa-check mr-2"></i> Present
-                        </button>
-                        <button onclick="setStatus('${doc.id}', 'absent')" class="btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600" data-type="absent">
-                            <i class="fas fa-times mr-2"></i> Absent
-                        </button>
+                    <div class="w-1/4 text-sm font-medium text-gray-700">${doc.id}</div>
+                    <div class="w-1/4 text-sm font-bold text-gray-900">${student.name}</div>
+                    <div class="w-1/2 flex justify-center space-x-4">
+                        <button id="btn-present-${doc.id}" onclick="setStatus('${doc.id}', 'present')" class="btn-status px-4 py-2 rounded-lg text-sm font-bold bg-white/50 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200">Present</button>
+                        <button id="btn-absent-${doc.id}" onclick="setStatus('${doc.id}', 'absent')" class="btn-status px-4 py-2 rounded-lg text-sm font-bold bg-white/50 text-red-600 hover:bg-red-50 hover:border-red-200">Absent</button>
                     </div>
                 `;
                 container.appendChild(row);
@@ -421,27 +431,16 @@
             toggleViews(true);
         }
 
-        function toggleViews(showList) {
-            if(showList) {
-                document.getElementById('welcomeState').classList.add('hidden');
-                document.getElementById('studentsListState').classList.remove('hidden');
-            } else {
-                document.getElementById('welcomeState').classList.remove('hidden');
-                document.getElementById('studentsListState').classList.add('hidden');
-            }
-        }
-
         function setStatus(studentDocId, status) {
-            const container = document.getElementById(`actions-${studentDocId}`);
-            const btnPresent = container.querySelector('[data-type="present"]');
-            const btnAbsent = container.querySelector('[data-type="absent"]');
+            const btnPresent = document.getElementById(`btn-present-${studentDocId}`);
+            const btnAbsent = document.getElementById(`btn-absent-${studentDocId}`);
+            
+            // Reset both buttons
+            btnPresent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold bg-white/50 text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200";
+            btnAbsent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold bg-white/50 text-red-600 hover:bg-red-50 hover:border-red-200";
 
-            // Reset classes
-            btnPresent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-emerald-100 hover:text-emerald-600";
-            btnAbsent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600";
-
-            // Apply Active State
-            if(status === 'present') {
+            // Set active status
+            if (status === 'present') {
                 btnPresent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold active-present";
             } else {
                 btnAbsent.className = "btn-status px-4 py-2 rounded-lg text-sm font-bold active-absent";
@@ -452,17 +451,19 @@
             if(idx > -1) studentsData[idx].tempStatus = status;
         }
 
-        // --- EXPORT & SAVE LOGIC ---
+        // --- EXPORT & SAVE LOGIC (MODIFIED) ---
         async function exportAndSave() {
             if(studentsData.length === 0) return;
 
             // 1. Gather Context Info
-            const groupName = document.getElementById('selGroup').options[document.getElementById('selGroup').selectedIndex].text;
-            const moduleName = document.getElementById('selModule').options[document.getElementById('selModule').selectedIndex].text;
-            const dateStr = new Date().toLocaleString();
+            const groupSelect = document.getElementById('selGroup');
+            const moduleSelect = document.getElementById('selModule');
+            const groupName = groupSelect.options[groupSelect.selectedIndex].text;
+            const moduleName = moduleSelect.options[moduleSelect.selectedIndex].text;
             
-            // 2. Prepare Data for Excel
-            // We create a Header Section and then the Data Table
+            const dateStr = new Date().toLocaleString();
+
+            // 2. Prepare Data for Excel & Calculate Counts
             const excelData = [
                 ["UNIVERSITY ATTENDANCE SHEET"],
                 ["Professor:", currentProf.name],
@@ -476,82 +477,83 @@
             let presentCount = 0;
             let absentCount = 0;
 
-            studentsData.forEach(s => {
-                const status = s.tempStatus ? s.tempStatus.toUpperCase() : "NOT MARKED";
-                if(s.tempStatus === 'present') presentCount++;
-                if(s.tempStatus === 'absent') absentCount++;
-                
-                excelData.push([
-                    s.id, // Student ID
-                    s.name, // Name
-                    status, // Status
-                    "" // Empty remarks column
-                ]);
+            studentsData.forEach(student => {
+                if(student.tempStatus) {
+                    const status = student.tempStatus.charAt(0).toUpperCase() + student.tempStatus.slice(1);
+                    excelData.push([
+                        student.id, 
+                        student.name, 
+                        status, 
+                        "" // Remarks column (empty)
+                    ]);
+                    if(student.tempStatus === 'present') presentCount++;
+                    if(student.tempStatus === 'absent') absentCount++;
+                }
             });
 
-            // Add Summary at bottom
+            // 3. Save to Firestore (The core change: Saves single structured document)
+            await saveToFirestore(moduleName, groupName, presentCount, absentCount);
+
+            // 4. Finalize Excel Data with Summary
             excelData.push([""]);
             excelData.push(["SUMMARY"]);
             excelData.push(["Total Present:", presentCount]);
             excelData.push(["Total Absent:", absentCount]);
 
-            // 3. Generate Excel File (Using SheetJS)
+            // 5. Generate and Download Excel
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet(excelData);
-
-            // Styling column widths (optional but nice)
-            ws['!cols'] = [
-                {wch: 20}, // ID width
-                {wch: 30}, // Name width
-                {wch: 15}, // Status width
-                {wch: 20}  // Remarks
-            ];
-
             XLSX.utils.book_append_sheet(wb, ws, "Attendance");
             
-            // Generate filename: Module_Group_Date.xlsx
-            const filename = `Attendance_${moduleName}_${groupName}_${new Date().toISOString().slice(0,10)}.xlsx`;
-            
-            // Trigger Download
+            const filename = `Attendance_${moduleName.replace(/ /g, '_')}_${groupName}_${new Date().toISOString().slice(0,10)}.xlsx`;
             XLSX.writeFile(wb, filename);
 
-            // 4. (Optional) Save to Firestore as well for backup
-            saveToFirestore(moduleName, groupName, presentCount, absentCount);
+            alert(`Attendance saved and downloaded! Present: ${presentCount}, Absent: ${absentCount}`);
         }
 
+        // --- NEW SAVE FUNCTION: Saves one structured document to 'attendance_reports' ---
         async function saveToFirestore(modName, grpName, pCount, aCount) {
-            const batch = db.batch();
             const moduleId = document.getElementById('selModule').value;
             const groupId = document.getElementById('selGroup').value;
-            const timestamp = firebase.firestore.Timestamp.now();
+            // Note: Assuming currentProf has the 'id' and 'name' fields from the professor's doc.
+            const profId = currentProf.id; 
+            const profName = currentProf.name; 
+            const date = new Date().toISOString(); // ISO string for easy sorting/storage
 
-            let hasUpdates = false;
+            // 1. Prepare student array for the single document
+            const studentDetails = studentsData
+                .filter(s => s.tempStatus) // Only save students that were marked
+                .map(s => ({
+                    studentId: s.id, 
+                    studentName: s.name,
+                    status: s.tempStatus.charAt(0).toUpperCase() + s.tempStatus.slice(1) // Present/Absent
+                }));
 
-            studentsData.forEach(student => {
-                if(student.tempStatus) {
-                    const ref = db.collection('attendance').doc();
-                    batch.set(ref, {
-                        studentId: student.id,
-                        studentName: student.name,
-                        moduleId: moduleId,
-                        moduleName: modName,
-                        groupId: groupId,
-                        profId: currentProf.id,
-                        status: student.tempStatus,
-                        date: timestamp
-                    });
-                    hasUpdates = true;
-                }
-            });
+            if(studentDetails.length === 0) {
+                console.log("No attendance marked, skipping cloud sync.");
+                return;
+            }
 
-            if(hasUpdates) {
-                try {
-                    await batch.commit();
-                    // Alert is handled by the download mostly, but we can notify success
-                    console.log("Data synced to cloud.");
-                } catch(e) {
-                    console.error("Cloud sync failed", e);
-                }
+            const reportData = {
+                date: date, // ISO Date String
+                groupId: groupId,
+                groupName: grpName,
+                moduleId: moduleId,
+                moduleName: modName,
+                profId: profId,
+                profName: profName,
+                students: studentDetails, // The array of students with status
+                presentCount: pCount,
+                absentCount: aCount
+            };
+
+            try {
+                // 2. Save the single report document in a new collection
+                await db.collection('attendance_reports').add(reportData);
+                console.log("Attendance report synced to 'attendance_reports' collection.");
+            } catch(e) {
+                console.error("Cloud sync failed", e);
+                alert("Failed to save report to the cloud.");
             }
         }
     </script>
